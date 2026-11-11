@@ -21,20 +21,27 @@ Nguyên nhân: Model bị nhầm lẫn giữa việc "không thấy trong 50 inc
 
 ## 3. Thay đổi đã thực hiện
 
-- Sửa gì, ở đâu: Cải tiến `SYSTEM_PROMPT` trong `agent.py`. Bổ sung chỉ dẫn: Khi người dùng yêu cầu danh sách đầy đủ trong một khoảng thời gian dài hoặc năm cũ (như 2025), bắt buộc phải giải thích rõ dữ liệu chỉ có tối đa 50 sự cố gần nhất và từ chối khẳng định chắc chắn về việc không có sự cố.
-- Vì sao chọn thay đổi này: Thay đổi này trực tiếp khắc phục lỗi boundaries (ranh giới dữ liệu) mà không vi phạm quy tắc làm bài (không sửa dữ liệu, giữ nguyên logic loop).
+- Sửa gì, ở đâu:
+  1. Cải tiến `SYSTEM_PROMPT` trong `agent.py`: Làm rõ quy tắc về giới hạn dữ liệu (snapshot chỉ lưu tối đa 50 sự cố gần nhất, không khẳng định phủ định cho cả năm/giai đoạn dài), yêu cầu kiểm tra kết hợp `get_status` và `get_incident_details`, báo rõ khi tool bị lỗi/timeout và dẫn nguồn đầy đủ.
+  2. Nâng cấp kiểm tra trong `run_agent` (`agent.py`): Kiểm tra đầy đủ tất cả URL nguồn của các incident đã đọc (`missing_urls`), tự động nhắc model đọc tiếp incident liên quan khi bản cập nhật có chứa đường dẫn `/incidents/<id>` sang sự cố khác, và thử lại có giới hạn khi gặp lỗi tạm thời.
+- Vì sao chọn thay đổi này: Giải quyết triệt để lỗi ranh giới dữ liệu (Boundaries ở A5, H8), lỗi bỏ sót bước tra cứu incident liên quan (ở A6, H1, H6) và đảm bảo trích dẫn đầy đủ mọi URL nguồn mà không vi phạm quy tắc làm bài.
 
 ## 4. So sánh hai lần chạy
 
 | Chỉ số | `eval_before.json` | `eval_after.json` |
 |---|---|---|
-| Điểm tổng | 81.27 / 100 | 79.32 / 100 |
+| Điểm tổng | 81.27 / 100 | 94.95 / 100 (+13.68 điểm) |
 | Điểm case đã chọn (A5) | 45 / 100 | 75 / 100 (+30 điểm) |
-| Số model calls | 53 calls | 46 calls (giảm 7 calls) |
-| Token, chi phí nếu có | 47,980 tokens | 37,181 tokens (giảm 22.5%) |
+| Số model calls | 53 calls | 52 calls |
+| Token, chi phí nếu có | 47,980 tokens | 67,931 tokens |
 
-- Lỗi đã giải quyết: Case A5 đã giải quyết triệt để lỗi vi phạm ranh giới dữ liệu (Boundaries). Agent đã giải thích rõ dữ liệu chỉ có 50 sự cố gần nhất và không còn khẳng định sai lầm rằng "không có sự cố nào trong năm 2025". Đồng thời, agent trả lời cô đọng hơn giúp giảm số lượng tool calls không cần thiết và tiết kiệm đáng kể token.
-- Lỗi còn lại hoặc mới xuất hiện: Điểm tổng dao động nhẹ (81.27 xuống 79.32) do tính ngẫu nhiên (variance) của LLM sinh câu trả lời và LLM Judge. Một số case (như H2, H4) bị judge trừ điểm chủ quan về văn phong dù logic sự thật không sai (ví dụ case thơ H4 lần 1 đạt 100 điểm, lần 2 bị chấm 80 điểm).
+- Lỗi đã giải quyết:
+  - Điểm tổng tăng mạnh từ **81.27 lên 94.95 / 100** (+13.68 điểm), toàn bộ 22/22 case đều hoàn thành và không có bất kỳ lỗi vi phạm `mechanical_checks` nào.
+  - **Case A5** đã giải quyết lỗi vi phạm ranh giới dữ liệu (Boundaries), tăng từ **45 lên 75 điểm (+30 điểm)**: agent giải thích rõ dữ liệu chỉ có 50 sự cố gần nhất và không còn khẳng định sai rằng năm 2025 không có sự cố.
+  - Các case phức tạp nhiều bước đều tăng điểm vượt bậc nhờ cơ chế theo dõi incident liên quan và kiểm tra đủ URL nguồn: **H1** tăng từ 60 lên **97 điểm** (+37), **H6** tăng từ 60 lên **80 điểm** (+20), **A6** tăng từ 75 lên **95 điểm** (+20), **A7** tăng từ 70 lên **93 điểm** (+23), **E1** tăng từ 75 lên **98 điểm** (+23), **H5** tăng từ 80 lên **100 điểm** (+20).
+- Lỗi còn lại hoặc mới xuất hiện:
+  - Tổng lượng token tăng từ 47,980 lên 67,931 tokens do `SYSTEM_PROMPT` chi tiết hơn và agent thực hiện đầy đủ các bước đọc incident liên quan (`get_incident_details`) thay vì dừng sớm.
+  - Một số case như **A5, H7** (75 điểm) hay **H6** (80 điểm) vẫn bị LLM Judge trừ nhẹ điểm thành phần do cách diễn đạt chi tiết các sự cố lịch sử trong snapshot.
 
 ## 5. Giới hạn
 
